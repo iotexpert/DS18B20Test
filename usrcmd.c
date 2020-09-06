@@ -52,13 +52,16 @@ static int usrcmd_init(int argc, char **argv);
 static int usrcmd_reset(int argc, char **argv);
 static int usrcmd_read(int argc, char **argv);
 static int usrcmd_write(int argc, char **argv);
-static int usrcmd_owbw(int argc, char **argv);
-static int usrcmd_owbwb(int argc, char **argv);
+static int usrcmd_wbit(int argc, char **argv);
+static int usrcmd_wbyte(int argc, char **argv);
 
 static int usrcmd_readb(int argc, char **argv);
 static int usrcmd_readrom(int argc, char **argv);
 static int usrcmd_readtemp(int argc, char **argv);
 
+static int usrcmd_search(int argc, char **argv);
+
+static int usrcmd_romlib(int argc, char **argv);
 
 
 typedef struct {
@@ -71,16 +74,18 @@ static const cmd_table_t cmdlist[] = {
     { "help", "This is a description text string for help command.", usrcmd_help },
     { "info", "This is a description text string for info command.", usrcmd_info },
     { "clear", "Clear the screen", usrcmd_clear },
-    { "printargs","print the list of arguments", usrcmd_printargs},
+    { "pargs","print the list of arguments", usrcmd_printargs},
     { "init","Initialize the 1-wire bus", usrcmd_init},
     { "reset","Reset the 1-wire bus", usrcmd_reset},
     { "read","Reset the 1-wire bus", usrcmd_read},
     { "write","write [0|1]", usrcmd_write},
-    { "owbw","write bit: owbw [0|1]", usrcmd_owbw},
-    { "owbwb","write byte: owbw [0|1]", usrcmd_owbwb},
+    { "wbit","write bit: wbit [0|1]", usrcmd_wbit},
+    { "wbyte","write byte", usrcmd_wbyte},
     { "readb","Read", usrcmd_readb},
     { "readrom","readrom", usrcmd_readrom},
-  { "temp","temp", usrcmd_readtemp},
+    { "temp","temp", usrcmd_readtemp},
+    { "search","search", usrcmd_search},
+    { "rlib","read rom using library", usrcmd_romlib},
 
 };
 
@@ -170,10 +175,10 @@ static int usrcmd_init(int argc, char **argv)
 static int usrcmd_reset(int argc, char **argv)
 {
     bool result;
-    owb_ret_t rval = owb_reset(&bus,&result);
-    if(rval == OWB_STATUS_OK)
+    owb_reset(&bus,&result);
+    if(bus.detect)
     {
-        printf("Reset Succedded\n");
+        printf("Reset Succeeded\n");
 
     }
     else
@@ -213,7 +218,7 @@ static int usrcmd_write(int argc, char **argv)
     return 0;
 }
 
-static int usrcmd_owbw(int argc, char **argv)
+static int usrcmd_wbit(int argc, char **argv)
 {
     if(argc != 2)
     {
@@ -226,7 +231,7 @@ static int usrcmd_owbw(int argc, char **argv)
     switch(argv[1][0])
     {
         case '0':
-            printf("owbw 0\n");
+            printf("Write 0\n");
             ret = owb_write_bit(&bus,0);
 
         break;
@@ -245,7 +250,7 @@ static int usrcmd_owbw(int argc, char **argv)
     return 0;
 }
 
-static int usrcmd_owbwb(int argc, char **argv)
+static int usrcmd_wbyte(int argc, char **argv)
 {
     if(argc != 2)
     {
@@ -263,7 +268,7 @@ static int usrcmd_owbwb(int argc, char **argv)
     ret = owb_write_byte(&bus,(uint8_t)val);
 
     if(ret == OWB_STATUS_OK)
-        printf("Write byte succeded\n");
+        printf("Write byte succeeded\n");
     else
         printf("Write byte failed\n");
 
@@ -281,7 +286,7 @@ static int usrcmd_readb(int argc, char **argv)
     ret = owb_read_byte(&bus,&val);
 
     if(ret == OWB_STATUS_OK)
-        printf("Read byte succeded %d\n",val);
+        printf("Read byte succeeded %d\n",val);
     else
         printf("Read byte failed\n");
 
@@ -289,7 +294,7 @@ static int usrcmd_readb(int argc, char **argv)
     return 0;
 }
 
-uint8_t rom[8];
+OneWireBus_ROMCode rom;
 
 static int usrcmd_readrom(int argc, char **argv)
 {
@@ -319,7 +324,7 @@ static int usrcmd_readrom(int argc, char **argv)
     // read 64-bit rom
     printf("Reading 8 bytes\n");
 
-    rval = owb_read_bytes(&bus,rom,8);
+    rval = owb_read_bytes(&bus,rom.bytes,8);
 
    if(rval != OWB_STATUS_OK)
     {
@@ -330,7 +335,7 @@ static int usrcmd_readrom(int argc, char **argv)
     printf("Rom = ");
     for(int i=0;i<8;i++)
     {
-        printf("%02X ",rom[i]);
+        printf("%02X ",rom.bytes[i]);
     }
     printf("\n");
     return 0;
@@ -352,17 +357,17 @@ static int usrcmd_readtemp(int argc, char **argv)
     // read 9 bytes of scratch pad
 
     owb_reset(&bus,&result);
-    CyDelay(1);
-    owb_write_byte(&bus,0x55);
-    owb_write_bytes(&bus,rom,8);
-    owb_write_byte(&bus,0x44);
+    //CyDelay(1);
+    owb_write_byte(&bus,OWB_ROM_MATCH);
+    owb_write_bytes(&bus,rom.bytes,8);
+    owb_write_byte(&bus,0x44); // 0x44 DS18B20 Trigger Convert
     vTaskDelay(1000);
     owb_reset(&bus,&result);
-    CyDelay(1);
+    //CyDelay(1);
 
-    owb_write_byte(&bus,0x55);
-    owb_write_bytes(&bus,rom,8);
-    owb_write_byte(&bus,0xbe);
+    owb_write_byte(&bus,OWB_ROM_MATCH);
+    owb_write_bytes(&bus,rom.bytes,8);
+    owb_write_byte(&bus,0xbe); // 0xbe DS18B20 Read Scratch Pad
     owb_read_bytes(&bus,scratchpad,9);
     printf("Scratchpad =");
     for(int i=0;i<9;i++)
@@ -395,4 +400,43 @@ static int usrcmd_readtemp(int argc, char **argv)
     printf("Temperature = %f\n",temperature);
     return 0;  
 
+}
+
+
+static int usrcmd_search(int argc, char **argv)
+{
+    printf("Search\n");
+    OneWireBus_SearchState state;
+    bool found_device;
+
+    owb_search_first(&bus, &state, &found_device);
+
+    do {
+        if(found_device)
+        {
+            printf("Found Device = ");
+            for(int i=0;i<8;i++)
+            {
+                printf("%02X ",state.rom_code.bytes[i]);
+            }
+            printf("\n");
+        }
+
+        owb_search_next(&bus, &state, &found_device);
+
+    } while(found_device);
+
+    printf("Search done\n");
+    return 0;
+}
+
+
+static int usrcmd_romlib(int argc, char **argv)
+{
+    owb_read_rom(&bus, &rom);
+    for(int i=0;i<8;i++)
+    {
+        printf("%02X ",rom.bytes[i]);
+    }
+    printf("\n");
 }

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "log.h"
 
 #include "ntshell.h"
 #include "ntlibc.h"
@@ -31,18 +32,19 @@ ntshell_t ntshell;
 
 void ntShellTask()
 {
+    cy_retarget_io_init(CYBSP_DEBUG_UART_TX, CYBSP_DEBUG_UART_RX, CY_RETARGET_IO_BAUDRATE);
 
-  printf("Started ntshell\n");
-  setvbuf(stdin, NULL, _IONBF, 0);
-  ntshell_init(
+    printf("Started ntshell\n");
+    setvbuf(stdin, NULL, _IONBF, 0);
+    ntshell_init(
 	       &ntshell,
 	       ntshell_read,
 	       ntshell_write,
 	       ntshell_callback,
 	       (void *)&ntshell);
-  ntshell_set_prompt(&ntshell, "DS18B20> ");
-  vtsend_erase_display(&ntshell.vtsend);
-  ntshell_execute(&ntshell);
+    ntshell_set_prompt(&ntshell, "DS18B20> ");
+    vtsend_erase_display(&ntshell.vtsend);
+    ntshell_execute(&ntshell);
 }
 
 
@@ -60,13 +62,11 @@ int main(void)
 
     __enable_irq();
 
-    cy_retarget_io_init(CYBSP_DEBUG_UART_TX, CYBSP_DEBUG_UART_RX, CY_RETARGET_IO_BAUDRATE);
-    setvbuf(stdin, NULL, _IONBF, 0);
 
     // Stack size in WORDs
     // Idle task = priority 0
     xTaskCreate(blinkTask, "blinkTask", configMINIMAL_STACK_SIZE,0 /* args */ ,2 /* priority */, &blinkTaskHandle);
-    xTaskCreate(ntShellTask, "nt shell task", configMINIMAL_STACK_SIZE*3,0 /* args */ ,1 /* priority */, 0);
+    xTaskCreate(ntShellTask, "nt shell task", configMINIMAL_STACK_SIZE*3,0 /* args */ ,2 /* priority */, 0);
 
     vTaskStartScheduler();
 
