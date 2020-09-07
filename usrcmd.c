@@ -439,4 +439,5 @@ static int usrcmd_romlib(int argc, char **argv)
         printf("%02X ",rom.bytes[i]);
     }
     printf("\n");
+    return 0;
 }
